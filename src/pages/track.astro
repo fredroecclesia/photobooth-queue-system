@@ -1,0 +1,180 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+<Layout title="Pantau Antrean Realtime">
+  <main class="max-w-md mx-auto min-h-screen flex flex-col justify-between p-6">
+    <div class="space-y-4">
+      <header class="flex items-center justify-between">
+        <div>
+          <h1 id="track-booth" class="text-lg font-extrabold text-slate-900">Pantau Antrean</h1>
+          <p class="text-xs text-slate-500">Pembaruan otomatis tanpa perlu refresh</p>
+        </div>
+        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+          Realtime
+        </span>
+      </header>
+
+      <div id="track-error" class="hidden p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold"></div>
+
+      <!-- In-Website Alert Banner (FR-017, FR-018, FR-047) -->
+      <div id="alert-banner" class="hidden p-4 rounded-2xl border font-semibold text-sm"></div>
+
+      <!-- Kartu Nomor Antrean Saya -->
+      <section class="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 text-center">
+        <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Nomor Antrean Anda</span>
+        <h2 id="my-number" class="text-5xl font-black text-indigo-600 my-2">---</h2>
+        <span id="my-status" class="inline-block px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-bold">
+          Memuat...
+        </span>
+
+        <div class="grid grid-cols-3 gap-2 mt-6 pt-5 border-t border-slate-100">
+          <div>
+            <span class="text-[11px] text-slate-400 block">Sedang Dipanggil</span>
+            <strong id="called-now" class="text-base font-extrabold text-slate-800">-</strong>
+          </div>
+          <div>
+            <span class="text-[11px] text-slate-400 block">Antrean di Depan</span>
+            <strong id="ahead-count" class="text-base font-extrabold text-slate-800">-</strong>
+          </div>
+          <div>
+            <span class="text-[11px] text-slate-400 block">Estimasi Tunggu</span>
+            <strong id="wait-est" class="text-base font-extrabold text-slate-800">- mnt</strong>
+          </div>
+        </div>
+      </section>
+
+      <!-- Browser Push Notification Opt-In (FR-046) -->
+      <section class="bg-indigo-50/70 rounded-2xl p-4 border border-indigo-100 flex items-center justify-between gap-3">
+        <div>
+          <p class="text-xs font-bold text-indigo-950">Notifikasi Browser</p>
+          <p class="text-[11px] text-indigo-700">Terima peringatan saat tersisa 3 antrean atau saat dipanggil</p>
+          <p id="push-msg" class="text-[11px] text-slate-500 mt-0.5"></p>
+        </div>
+        <button
+          id="btn-push"
+          type="button"
+          class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shrink-0"
+        >
+          Aktifkan
+        </button>
+      </section>
+    </div>
+
+    <footer class="text-center text-xs text-slate-400 pt-6">
+      Jangan tutup halaman ini atau aktifkan notifikasi agar tidak melewatkan panggilan.
+    </footer>
+  </main>
+
+  <script>
+    import { supabase } from '../lib/supabase';
+
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('t') || params.get('token');
+
+    const errorEl = document.getElementById('track-error')!;
+    const myNumberEl = document.getElementById('my-number')!;
+    const myStatusEl = document.getElementById('my-status')!;
+    const calledNowEl = document.getElementById('called-now')!;
+    const aheadCountEl = document.getElementById('ahead-count')!;
+    const waitEstEl = document.getElementById('wait-est')!;
+    const alertBanner = document.getElementById('alert-banner')!;
+    const boothEl = document.getElementById('track-booth')!;
+    const btnPush = document.getElementById('btn-push') as HTMLButtonElement;
+    const pushMsgEl = document.getElementById('push-msg')!;
+
+    let lastStatus = '';
+
+    async function refreshTracking() {
+      if (!token) {
+        errorEl.textContent = 'Token antrean tidak ditemukan pada URL (?t=...).';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+      if (!supabase) return;
+
+      const { data, error } = await supabase.rpc('get_ticket_by_token', { p_token: token });
+      if (error || !data) {
+        errorEl.textContent = error?.message || 'Gagal memuat status antrean.';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+
+      errorEl.classList.add('hidden');
+      boothEl.textContent = data.photobooth_name || 'Pantau Antrean';
+      myNumberEl.textContent = data.ticket_number;
+      myStatusEl.textContent = data.status;
+      calledNowEl.textContent = data.currently_called || '-';
+      aheadCountEl.textContent = data.status === 'Waiting' ? `${data.waiting_ahead} orang` : '-';
+      waitEstEl.textContent = data.status === 'Waiting' ? `~${data.estimated_wait_minutes} mnt` : '0 mnt';
+
+      const threshold = data.near_turn_threshold || 3;
+
+      if (data.status === 'Called') {
+        alertBanner.className = 'p-4 rounded-2xl border bg-emerald-50 border-emerald-300 text-emerald-900 font-semibold text-sm animate-bounce';
+        alertBanner.textContent = `Giliran Anda Dipanggil! Silakan segera menuju photobooth (${data.ticket_number}).`;
+        alertBanner.classList.remove('hidden');
+        if (lastStatus !== 'Called' && 'Notification' in window && Notification.permission === 'granted') {
+          new Notification(`Giliran Anda Dipanggil (${data.ticket_number})!`, {
+            body: 'Silakan menuju unit photobooth sekarang.',
+          });
+        }
+      } else if (data.status === 'Waiting' && data.waiting_ahead <= threshold) {
+        alertBanner.className = 'p-4 rounded-2xl border bg-amber-50 border-amber-300 text-amber-900 font-semibold text-sm';
+        alertBanner.textContent =
+          data.waiting_ahead === 0
+            ? 'Anda adalah antrean berikutnya! Mohon bersiap.'
+            : `Bersiap! Tersisa ${data.waiting_ahead} antrean lagi sebelum giliran Anda.`;
+        alertBanner.classList.remove('hidden');
+      } else {
+        alertBanner.classList.add('hidden');
+      }
+
+      lastStatus = data.status;
+    }
+
+    btnPush?.addEventListener('click', async () => {
+      if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+        pushMsgEl.textContent = 'Browser ini tidak mendukung Web Push (Di iPhone, gunakan Add to Home Screen).';
+        return;
+      }
+      try {
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+          pushMsgEl.textContent = 'Izin notifikasi ditolak pada pengaturan browser.';
+          return;
+        }
+        btnPush.textContent = 'Aktif';
+        btnPush.disabled = true;
+        const reg = await navigator.serviceWorker.register('/sw.js');
+        const vapidKey = import.meta.env.PUBLIC_VAPID_PUBLIC_KEY;
+        if (vapidKey && supabase && token) {
+          const sub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: vapidKey,
+          });
+          const { error } = await supabase.rpc('save_push_subscription', {
+            p_token: token,
+            p_subscription: sub.toJSON(),
+          });
+          if (error) {
+            pushMsgEl.textContent = `Gagal menyimpan langganan push: ${error.message}`;
+          } else {
+            pushMsgEl.textContent = 'Langganan push notification berhasil disimpan.';
+          }
+        }
+      } catch (err: any) {
+        pushMsgEl.textContent = err?.message || 'Gagal mengaktifkan push notification.';
+      }
+    });
+
+    refreshTracking();
+    if (supabase && token) {
+      supabase
+        .channel('tracking-public-sync')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'public_queue_sync' }, refreshTracking)
+        .subscribe();
+      setInterval(refreshTracking, 4000);
+    }
+  </script>
+</Layout>

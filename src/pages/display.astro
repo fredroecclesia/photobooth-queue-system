@@ -1,0 +1,81 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+<Layout title="Mobile Queue Display">
+  <!-- PRD Bab 4.4: Halaman Display Mobile First, Realtime, Tanpa Nama Pengunjung, Tanpa Audio -->
+  <main class="max-w-md mx-auto min-h-screen bg-slate-950 text-white flex flex-col justify-between p-6">
+    <header class="flex items-center justify-between border-b border-slate-800 pb-4">
+      <div>
+        <h1 id="display-booth" class="text-base font-extrabold tracking-tight">SnapStudio Photobooth</h1>
+        <p class="text-[11px] text-slate-400">Layar Pemantau Antrean (Tanpa Audio)</p>
+      </div>
+      <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 text-xs font-semibold border border-emerald-500/20">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+        LIVE
+      </span>
+    </header>
+
+    <section class="my-6 text-center bg-gradient-to-b from-indigo-600 to-indigo-800 rounded-3xl p-8 shadow-xl border border-indigo-400/20">
+      <span class="text-xs uppercase tracking-widest text-indigo-200 font-bold">Sedang Dipanggil</span>
+      <div id="display-called" class="text-6xl font-black tracking-tight my-4 transition-transform duration-300">
+        ---
+      </div>
+      <p class="text-xs text-indigo-100">Silakan menuju unit photobooth</p>
+    </section>
+
+    <section class="bg-slate-900 rounded-2xl p-5 border border-slate-800 flex-1">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400">Antrean Berikutnya</h2>
+        <span id="display-waiting-count" class="text-xs text-slate-400">0 menunggu</span>
+      </div>
+      <div id="display-next-list" class="grid grid-cols-2 gap-2.5"></div>
+    </section>
+  </main>
+
+  <script>
+    import { supabase, escapeHtml } from '../lib/supabase';
+
+    const boothEl = document.getElementById('display-booth')!;
+    const calledEl = document.getElementById('display-called')!;
+    const waitingCountEl = document.getElementById('display-waiting-count')!;
+    const nextListEl = document.getElementById('display-next-list')!;
+    let prevCalled = '';
+
+    async function refreshDisplay() {
+      if (!supabase) return;
+      const { data, error } = await supabase.rpc('get_public_display');
+      if (error || !data) return;
+
+      boothEl.textContent = data.photobooth_name || 'Photobooth';
+      const nowCalled = data.currently_called || '---';
+
+      if (nowCalled !== prevCalled) {
+        calledEl.classList.add('scale-110');
+        setTimeout(() => calledEl.classList.remove('scale-110'), 400);
+        prevCalled = nowCalled;
+      }
+      calledEl.textContent = nowCalled;
+      waitingCountEl.textContent = `${data.waiting_count || 0} menunggu`;
+
+      const nextArr: string[] = Array.isArray(data.next_queues) ? data.next_queues : [];
+      nextListEl.innerHTML = nextArr.length
+        ? nextArr
+            .map(
+              (num) =>
+                `<div class="bg-slate-800/80 border border-slate-700 rounded-xl py-3 px-4 text-center font-extrabold text-lg text-slate-100">${escapeHtml(num)}</div>`
+            )
+            .join('')
+        : `<p class="col-span-2 text-xs text-slate-500 text-center py-6">Belum ada antrean menunggu</p>`;
+    }
+
+    refreshDisplay();
+    if (supabase) {
+      supabase
+        .channel('mobile-display-realtime')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'public_queue_sync' }, refreshDisplay)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'queue_settings' }, refreshDisplay)
+        .subscribe();
+      setInterval(refreshDisplay, 4000);
+    }
+  </script>
+</Layout>

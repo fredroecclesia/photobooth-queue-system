@@ -1,0 +1,104 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+<Layout title="Tiket Antrean Digital">
+  <main class="max-w-md mx-auto min-h-screen flex flex-col justify-center p-6">
+    <div id="ticket-error" class="hidden mb-4 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold text-center"></div>
+
+    <div class="bg-white rounded-3xl shadow-md border border-slate-200 overflow-hidden">
+      <div class="bg-indigo-600 text-white p-6 text-center">
+        <p id="ticket-booth-name" class="text-xs uppercase tracking-widest text-indigo-200 font-semibold">
+          Photobooth Queue Ticket
+        </p>
+        <p class="text-xs text-indigo-100 mt-1">Nomor Antrean Anda</p>
+        <h1 id="ticket-number" class="text-5xl font-black tracking-tight mt-2">---</h1>
+        <span id="ticket-status" class="inline-block mt-3 px-3 py-1 rounded-full bg-indigo-500/40 text-xs font-semibold">
+          Waiting
+        </span>
+      </div>
+
+      <div class="p-6 text-center space-y-5">
+        <div class="grid grid-cols-2 gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
+          <div>
+            <span class="text-xs text-slate-500 block">Posisi Antrean</span>
+            <strong id="ticket-pos" class="text-lg font-bold text-slate-800">-</strong>
+          </div>
+          <div>
+            <span class="text-xs text-slate-500 block">Estimasi Tunggu</span>
+            <strong id="ticket-wait" class="text-lg font-bold text-slate-800">- mnt</strong>
+          </div>
+        </div>
+
+        <div class="flex flex-col items-center">
+          <div class="p-3 bg-white border border-slate-200 rounded-2xl shadow-sm">
+            <canvas id="qr-canvas" class="w-44 h-44"></canvas>
+          </div>
+          <p class="text-xs text-slate-400 mt-2">
+            Scan QR Code untuk membuka halaman pantau antrean realtime
+          </p>
+        </div>
+
+        <a
+          id="track-link"
+          href="/track"
+          class="block w-full py-3.5 px-5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm transition"
+        >
+          Pantau Antrean Secara Realtime
+        </a>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    import { supabase } from '../lib/supabase';
+    import QRCode from 'qrcode';
+
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('t') || params.get('token');
+
+    const errorEl = document.getElementById('ticket-error')!;
+    const numberEl = document.getElementById('ticket-number')!;
+    const statusEl = document.getElementById('ticket-status')!;
+    const posEl = document.getElementById('ticket-pos')!;
+    const waitEl = document.getElementById('ticket-wait')!;
+    const boothEl = document.getElementById('ticket-booth-name')!;
+    const trackLink = document.getElementById('track-link') as HTMLAnchorElement;
+    const qrCanvas = document.getElementById('qr-canvas') as HTMLCanvasElement;
+
+    async function loadTicket() {
+      if (!token) {
+        errorEl.textContent = 'Token tiket tidak ditemukan pada URL (?t=...).';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+      if (!supabase) return;
+
+      const { data, error } = await supabase.rpc('get_ticket_by_token', { p_token: token });
+      if (error || !data) {
+        errorEl.textContent = error?.message || 'Tiket tidak ditemukan.';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+
+      errorEl.classList.add('hidden');
+      boothEl.textContent = data.photobooth_name || 'Photobooth Ticket';
+      numberEl.textContent = data.ticket_number;
+      statusEl.textContent = data.status;
+      posEl.textContent = data.status === 'Waiting' ? `#${data.queue_position}` : data.status;
+      waitEl.textContent = `~${data.estimated_wait_minutes} mnt`;
+
+      const trackingUrl = `${window.location.origin}/track?t=${encodeURIComponent(token)}`;
+      trackLink.href = `/track?t=${encodeURIComponent(token)}`;
+      await QRCode.toCanvas(qrCanvas, trackingUrl, { width: 176, margin: 1 });
+    }
+
+    loadTicket();
+    if (supabase && token) {
+      supabase
+        .channel('ticket-public-sync')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'public_queue_sync' }, loadTicket)
+        .subscribe();
+      setInterval(loadTicket, 4000);
+    }
+  </script>
+</Layout>

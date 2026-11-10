@@ -1,0 +1,139 @@
+---
+import Layout from '../../layouts/Layout.astro';
+---
+<Layout title="Statistik & Laporan">
+  <main class="max-w-6xl mx-auto p-6 space-y-6">
+    <header class="flex flex-wrap items-center justify-between gap-4">
+      <div>
+        <a href="/admin" class="text-xs font-bold text-indigo-600 hover:underline">&larr; Kembali ke Dashboard</a>
+        <h1 class="text-2xl font-extrabold mt-1">Statistik & Laporan (PRD Bab 9)</h1>
+      </div>
+      <div class="flex items-center gap-3">
+        <input id="date-from" type="date" class="px-3 py-2 rounded-xl border border-slate-300 text-sm" />
+        <input id="date-to" type="date" class="px-3 py-2 rounded-xl border border-slate-300 text-sm" />
+        <button id="btn-export-csv" type="button" class="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold">
+          Export CSV / Excel (FR-056)
+        </button>
+      </div>
+    </header>
+
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="bg-white p-5 rounded-2xl border border-slate-200">
+        <span class="text-xs text-slate-500">Total Pengunjung (FR-050)</span>
+        <strong id="rep-total" class="text-3xl font-black block mt-1">0</strong>
+      </div>
+      <div class="bg-white p-5 rounded-2xl border border-slate-200">
+        <span class="text-xs text-slate-500">Sesi Selesai (FR-051)</span>
+        <strong id="rep-completed" class="text-3xl font-black text-emerald-600 block mt-1">0</strong>
+      </div>
+      <div class="bg-white p-5 rounded-2xl border border-slate-200">
+        <span class="text-xs text-slate-500">Rata-rata Waktu Tunggu (FR-052)</span>
+        <strong id="rep-avg-wait" class="text-3xl font-black text-indigo-600 block mt-1">0 mnt</strong>
+      </div>
+      <div class="bg-white p-5 rounded-2xl border border-slate-200">
+        <span class="text-xs text-slate-500">Jam Paling Ramai (FR-053)</span>
+        <strong id="rep-busiest" class="text-3xl font-black text-amber-600 block mt-1">-</strong>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    import { supabase, escapeCsvCell } from '../../lib/supabase';
+    let reportRows: any[] = [];
+
+    // Pengambilan bertahap (chunked pagination) agar tidak terpotong di batas default 1.000 baris Supabase
+    async function fetchAllFilteredQueues() {
+      if (!supabase) return [];
+      const fromVal = (document.getElementById('date-from') as HTMLInputElement).value;
+      const toVal = (document.getElementById('date-to') as HTMLInputElement).value;
+
+      const allData: any[] = [];
+      const batchSize = 1000;
+      let offset = 0;
+
+      while (true) {
+        let q = supabase
+          .from('queues')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .range(offset, offset + batchSize - 1);
+
+        if (fromVal) q = q.gte('created_at', `${fromVal}T00:00:00`);
+        if (toVal) q = q.lte('created_at', `${toVal}T23:59:59`);
+
+        const { data, error } = await q;
+        if (error || !data || data.length === 0) break;
+        allData.push(...data);
+        if (data.length < batchSize) break;
+        offset += batchSize;
+      }
+      return allData;
+    }
+
+    async function loadReports() {
+      if (!supabase) return;
+      const { data: isAdmin } = await supabase.rpc('is_admin');
+      if (!isAdmin) {
+        window.location.href = '/admin/login';
+        return;
+      }
+      reportRows = await fetchAllFilteredQueues();
+      computeStats();
+    }
+
+    function computeStats() {
+      const completed = reportRows.filter((r) => r.status === 'Completed');
+      document.getElementById('rep-total')!.textContent = String(reportRows.length);
+      document.getElementById('rep-completed')!.textContent = String(completed.length);
+
+      // called_at adalah waktu panggilan pertama (tidak ditimpa saat Recall)
+      const waitTimes = reportRows
+        .filter((r) => r.called_at && r.created_at)
+        .map((r) => (new Date(r.called_at).getTime() - new Date(r.created_at).getTime()) / 60000);
+      const avgWait = waitTimes.length
+        ? Math.round(waitTimes.reduce((a, b) => a + b, 0) / waitTimes.length)
+        : 0;
+      document.getElementById('rep-avg-wait')!.textContent = `${avgWait} mnt`;
+
+      const hourBuckets: Record<string, number> = {};
+      reportRows.forEach((r) => {
+        const h = new Date(r.created_at).getHours().toString().padStart(2, '0') + ':00';
+        hourBuckets[h] = (hourBuckets[h] || 0) + 1;
+      });
+      const busiest = Object.entries(hourBuckets).sort((a, b) => b[1] - a[1])[0];
+      document.getElementById('rep-busiest')!.textContent = busiest ? busiest[0] : '-';
+    }
+
+    document.getElementById('btn-export-csv')?.addEventListener('click', () => {
+      const headers = ['Ticket Number', 'Visitor Name', 'Session ID', 'Status', 'Created At', 'First Called At', 'Recalled At', 'Completed At'];
+      const csvContent = [
+        headers.map(escapeCsvCell).join(','),
+        ...reportRows.map((r) =>
+          [
+            escapeCsvCell(r.ticket_number),
+            escapeCsvCell(r.visitor_name),
+            escapeCsvCell(r.session_id),
+            escapeCsvCell(r.status),
+            escapeCsvCell(r.created_at),
+            escapeCsvCell(r.called_at || ''),
+            escapeCsvCell(r.recalled_at || ''),
+            escapeCsvCell(r.completed_at || ''),
+          ].join(',')
+        ),
+      ].join('\n');
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `photobooth-report-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+    });
+
+    ['date-from', 'date-to'].forEach((id) =>
+      document.getElementById(id)?.addEventListener('change', loadReports)
+    );
+
+    loadReports();
+  </script>
+</Layout>

@@ -1,0 +1,175 @@
+---
+import Layout from '../../layouts/Layout.astro';
+---
+<Layout title="Riwayat Antrean & Audit Log">
+  <main class="max-w-6xl mx-auto p-6 space-y-6">
+    <header class="flex flex-wrap items-center justify-between gap-4">
+      <div>
+        <a href="/admin" class="text-xs font-bold text-indigo-600 hover:underline">&larr; Kembali ke Dashboard</a>
+        <h1 class="text-2xl font-extrabold mt-1">Riwayat Seluruh Sesi & Audit Log (PRD Bab 8 & 12.4)</h1>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <input id="filter-date" type="date" class="px-3 py-2 rounded-xl border border-slate-300 text-sm" />
+        <select id="filter-status" class="px-3 py-2 rounded-xl border border-slate-300 text-sm">
+          <option value="">Semua Status</option>
+          <option value="Waiting">Waiting</option>
+          <option value="Called">Called</option>
+          <option value="Completed">Completed</option>
+          <option value="Skipped">Skipped</option>
+          <option value="Cancelled">Cancelled</option>
+        </select>
+        <input id="filter-search" type="search" placeholder="Cari nomor / nama..." class="px-3 py-2 rounded-xl border border-slate-300 text-sm" />
+      </div>
+    </header>
+
+    <!-- Tabel Riwayat Antrean dengan Paginasi -->
+    <section class="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
+      <div class="p-4 border-b border-slate-100 flex items-center justify-between">
+        <h2 class="text-sm font-bold text-slate-800">Daftar Riwayat Antrean (`queues`)</h2>
+        <div class="flex items-center gap-2 text-xs">
+          <span id="page-info" class="text-slate-500">Halaman 1</span>
+          <button id="btn-prev" type="button" class="px-3 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 font-semibold">Prev</button>
+          <button id="btn-next" type="button" class="px-3 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 font-semibold">Next</button>
+        </div>
+      </div>
+      <table class="w-full text-left text-sm">
+        <thead class="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500">
+          <tr>
+            <th class="py-3.5 px-4">Nomor</th>
+            <th class="py-3.5 px-4">Nama Pengunjung</th>
+            <th class="py-3.5 px-4">Session ID</th>
+            <th class="py-3.5 px-4">Waktu Registrasi</th>
+            <th class="py-3.5 px-4">Waktu Panggilan</th>
+            <th class="py-3.5 px-4">Waktu Selesai</th>
+            <th class="py-3.5 px-4">Status Akhir</th>
+          </tr>
+        </thead>
+        <tbody id="history-tbody" class="divide-y divide-slate-100"></tbody>
+      </table>
+    </section>
+
+    <!-- Tabel Audit Log Perubahan Status (Tabel queue_history - PRD Bab 12.4) -->
+    <section class="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
+      <div class="p-4 border-b border-slate-100">
+        <h2 class="text-sm font-bold text-slate-800">Jejak Audit Perubahan Status (`queue_history`)</h2>
+      </div>
+      <table class="w-full text-left text-xs">
+        <thead class="bg-slate-50 border-b border-slate-200 uppercase text-slate-500">
+          <tr>
+            <th class="py-3 px-4">Waktu Perubahan</th>
+            <th class="py-3 px-4">Nomor Tiket</th>
+            <th class="py-3 px-4">Status Lama</th>
+            <th class="py-3 px-4">Status Baru</th>
+            <th class="py-3 px-4">Diubah Oleh (Admin UID)</th>
+          </tr>
+        </thead>
+        <tbody id="audit-tbody" class="divide-y divide-slate-100"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script>
+    import { supabase, escapeHtml } from '../../lib/supabase';
+
+    const tbody = document.getElementById('history-tbody')!;
+    const auditTbody = document.getElementById('audit-tbody')!;
+    const pageInfo = document.getElementById('page-info')!;
+    const PAGE_SIZE = 50;
+    let currentPage = 0;
+    let totalCount = 0;
+
+    async function loadHistoryPage() {
+      if (!supabase) return;
+      const { data: isAdmin } = await supabase.rpc('is_admin');
+      if (!isAdmin) {
+        window.location.href = '/admin/login';
+        return;
+      }
+
+      const dateVal = (document.getElementById('filter-date') as HTMLInputElement).value;
+      const statusVal = (document.getElementById('filter-status') as HTMLSelectElement).value;
+      const q = (document.getElementById('filter-search') as HTMLInputElement).value.trim();
+
+      let query = supabase
+        .from('queues')
+        .select('*', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .range(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE - 1);
+
+      if (statusVal) query = query.eq('status', statusVal);
+      if (dateVal) {
+        query = query.gte('created_at', `${dateVal}T00:00:00`).lte('created_at', `${dateVal}T23:59:59`);
+      }
+      if (q) {
+        query = query.or(`ticket_number.ilike.%${q}%,visitor_name.ilike.%${q}%`);
+      }
+
+      const { data, count } = await query;
+      totalCount = count || 0;
+      const rows = data || [];
+
+      const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+      pageInfo.textContent = `Halaman ${currentPage + 1} dari ${totalPages} (${totalCount} data)`;
+
+      tbody.innerHTML = rows
+        .map(
+          (r) => `
+        <tr>
+          <td class="py-3 px-4 font-bold text-indigo-600">${escapeHtml(r.ticket_number)}</td>
+          <td class="py-3 px-4">${escapeHtml(r.visitor_name)}</td>
+          <td class="py-3 px-4 font-mono text-xs text-slate-500">${escapeHtml(String(r.session_id).slice(0, 8))}</td>
+          <td class="py-3 px-4 text-xs">${new Date(r.created_at).toLocaleString('id-ID')}</td>
+          <td class="py-3 px-4 text-xs">${r.called_at ? new Date(r.called_at).toLocaleTimeString('id-ID') : '-'}</td>
+          <td class="py-3 px-4 text-xs">${r.completed_at ? new Date(r.completed_at).toLocaleTimeString('id-ID') : '-'}</td>
+          <td class="py-3 px-4 font-semibold text-xs">${escapeHtml(r.status)}</td>
+        </tr>
+      `
+        )
+        .join('');
+
+      // Muat log dari tabel queue_history
+      const { data: logs } = await supabase
+        .from('queue_history')
+        .select('*')
+        .order('changed_at', { ascending: false })
+        .limit(50);
+
+      auditTbody.innerHTML = (logs || [])
+        .map(
+          (l) => `
+        <tr>
+          <td class="py-2.5 px-4 text-slate-500">${new Date(l.changed_at).toLocaleString('id-ID')}</td>
+          <td class="py-2.5 px-4 font-bold text-indigo-600">${escapeHtml(l.ticket_number)}</td>
+          <td class="py-2.5 px-4">${escapeHtml(l.old_status || 'Baru (Insert)')}</td>
+          <td class="py-2.5 px-4 font-bold">${escapeHtml(l.new_status)}</td>
+          <td class="py-2.5 px-4 font-mono text-slate-500">${escapeHtml(l.changed_by || 'Public / System')}</td>
+        </tr>
+      `
+        )
+        .join('');
+    }
+
+    document.getElementById('btn-prev')?.addEventListener('click', () => {
+      if (currentPage > 0) {
+        currentPage--;
+        loadHistoryPage();
+      }
+    });
+
+    document.getElementById('btn-next')?.addEventListener('click', () => {
+      if ((currentPage + 1) * PAGE_SIZE < totalCount) {
+        currentPage++;
+        loadHistoryPage();
+      }
+    });
+
+    ['filter-date', 'filter-status', 'filter-search'].forEach((id) =>
+      document.getElementById(id)?.addEventListener('input', () => {
+        currentPage = 0;
+        loadHistoryPage();
+      })
+    );
+
+    loadHistoryPage();
+  </script>
+</Layout>

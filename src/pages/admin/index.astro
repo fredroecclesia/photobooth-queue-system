@@ -1,0 +1,257 @@
+---
+import Layout from '../../layouts/Layout.astro';
+---
+<Layout title="Admin Dashboard">
+  <div class="min-h-screen flex flex-col lg:flex-row">
+    <aside class="w-full lg:w-64 bg-slate-900 text-white p-6 flex flex-col justify-between">
+      <div>
+        <h1 class="text-lg font-extrabold tracking-tight mb-6">Admin Photobooth</h1>
+        <nav class="space-y-1.5 text-sm font-medium">
+          <a href="/admin" class="block px-4 py-2.5 rounded-xl bg-indigo-600 text-white">Dashboard & Audio</a>
+          <a href="/admin/queues" class="block px-4 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800">Kelola Antrean</a>
+          <a href="/admin/history" class="block px-4 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800">Riwayat Antrean</a>
+          <a href="/admin/reports" class="block px-4 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800">Statistik & Laporan</a>
+          <a href="/admin/settings" class="block px-4 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800">Pengaturan</a>
+        </nav>
+      </div>
+      <button id="btn-logout" class="mt-6 w-full py-2.5 px-4 rounded-xl bg-rose-600/20 text-rose-300 hover:bg-rose-600 hover:text-white text-xs font-bold transition">
+        Logout Admin
+      </button>
+    </aside>
+
+    <main class="flex-1 p-6 lg:p-8 space-y-6">
+      <div id="dashboard-alert" class="hidden p-4 rounded-2xl border text-xs font-semibold"></div>
+
+      <!-- KPI Cards (FR-025 s/d FR-029) -->
+      <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <div class="bg-white p-5 rounded-2xl border border-slate-200">
+          <span class="text-xs text-slate-500">Total Antrean (FR-025)</span>
+          <strong id="kpi-total" class="text-3xl font-black block mt-1">0</strong>
+        </div>
+        <div class="bg-indigo-600 text-white p-5 rounded-2xl shadow-sm">
+          <span class="text-xs text-indigo-200">Sedang Dipanggil (FR-026)</span>
+          <strong id="kpi-current" class="text-3xl font-black block mt-1">-</strong>
+        </div>
+        <div class="bg-white p-5 rounded-2xl border border-slate-200">
+          <span class="text-xs text-slate-500">Menunggu (FR-027)</span>
+          <strong id="kpi-waiting" class="text-3xl font-black text-amber-600 block mt-1">0</strong>
+        </div>
+        <div class="bg-white p-5 rounded-2xl border border-slate-200">
+          <span class="text-xs text-slate-500">Selesai (FR-028)</span>
+          <strong id="kpi-completed" class="text-3xl font-black text-emerald-600 block mt-1">0</strong>
+        </div>
+        <div class="bg-white p-5 rounded-2xl border border-slate-200">
+          <span class="text-xs text-slate-500">Berikutnya (FR-029)</span>
+          <strong id="kpi-next" class="text-3xl font-black text-indigo-600 block mt-1">-</strong>
+        </div>
+      </div>
+
+      <!-- Kontrol Cepat & Audio Announcement (PRD Bab 6: FR-040 s/d FR-045) -->
+      <div class="grid lg:grid-cols-2 gap-6">
+        <section class="bg-white p-6 rounded-2xl border border-slate-200 space-y-4">
+          <h2 class="text-base font-bold">Kontrol Panggilan Cepat</h2>
+          <div class="grid grid-cols-2 gap-3">
+            <button id="btn-next" class="py-3.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold text-sm">
+              Next Queue (FR-030)
+            </button>
+            <button id="btn-complete" class="py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold text-sm">
+              Complete (FR-033)
+            </button>
+            <button id="btn-skip" class="py-3.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold text-sm">
+              Skip Queue (FR-032)
+            </button>
+            <button id="btn-test-audio" class="py-3.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-sm">
+              Test Speaker (FR-041)
+            </button>
+          </div>
+          <p id="action-msg" class="text-xs font-medium text-slate-600"></p>
+        </section>
+
+        <section class="bg-white p-6 rounded-2xl border border-slate-200 space-y-4">
+          <div class="flex items-center justify-between">
+            <h2 class="text-base font-bold">Audio Announcement (Speaker Eksternal)</h2>
+            <label class="inline-flex items-center gap-2 text-xs font-bold">
+              <input id="chk-audio" type="checkbox" checked class="rounded text-indigo-600" />
+              Aktifkan Audio (FR-045)
+            </label>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Pilihan Suara / Voice (FR-042)</label>
+            <select id="sel-voice" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs"></select>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Kecepatan Suara (FR-043)</label>
+              <input id="rng-rate" type="range" min="0.6" max="1.5" step="0.1" value="1.0" class="w-full" />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Volume (FR-044)</label>
+              <input id="rng-vol" type="range" min="0.1" max="1.0" step="0.1" value="1.0" class="w-full" />
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    import { supabase, speakQueueAnnouncement, triggerPushNotification } from '../../lib/supabase';
+
+    let currentCalledItem: any = null;
+    let boothName = 'photobooth';
+    const alertBox = document.getElementById('dashboard-alert')!;
+    const msgEl = document.getElementById('action-msg')!;
+
+    function showBanner(message: string, isError = false) {
+      alertBox.textContent = message;
+      alertBox.className = isError
+        ? 'p-4 rounded-2xl border bg-rose-50 border-rose-200 text-rose-700 text-xs font-semibold'
+        : 'p-4 rounded-2xl border bg-emerald-50 border-emerald-200 text-emerald-800 text-xs font-semibold';
+      alertBox.classList.remove('hidden');
+    }
+
+    function populateVoices() {
+      const sel = document.getElementById('sel-voice') as HTMLSelectElement | null;
+      if (!sel || !('speechSynthesis' in window)) return;
+      const voices = window.speechSynthesis.getVoices();
+      sel.innerHTML = voices.length
+        ? voices.map((v) => `<option value="${v.name}">${v.name} (${v.lang})</option>`).join('')
+        : `<option value="id-ID">Default Browser Voice (id-ID)</option>`;
+    }
+    if ('speechSynthesis' in window) {
+      populateVoices();
+      window.speechSynthesis.onvoiceschanged = populateVoices;
+    }
+
+    async function checkAuthAndLoad() {
+      if (!supabase) return;
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session) {
+        window.location.href = '/admin/login';
+        return;
+      }
+      const { data: isAdmin } = await supabase.rpc('is_admin');
+      if (!isAdmin) {
+        await supabase.auth.signOut();
+        window.location.href = '/admin/login';
+        return;
+      }
+      await refreshStats();
+    }
+
+    async function refreshStats() {
+      if (!supabase) return;
+      const { data: settings } = await supabase
+        .from('queue_settings')
+        .select('*')
+        .eq('singleton_key', true)
+        .single();
+      if (settings) {
+        boothName = settings.photobooth_name;
+        (document.getElementById('chk-audio') as HTMLInputElement).checked = Boolean(settings.audio_enabled);
+        (document.getElementById('rng-rate') as HTMLInputElement).value = String(settings.speech_rate ?? 1.0);
+        (document.getElementById('rng-vol') as HTMLInputElement).value = String(settings.speech_volume ?? 1.0);
+      }
+
+      const { data: activeSession } = await supabase
+        .from('queue_sessions')
+        .select('*')
+        .eq('status', 'Active')
+        .limit(1)
+        .single();
+      if (!activeSession) return;
+
+      const { data: queues } = await supabase
+        .from('queues')
+        .select('*')
+        .eq('session_id', activeSession.id)
+        .order('sequence_number', { ascending: true });
+
+      const list = queues || [];
+      currentCalledItem = list.find((q) => q.status === 'Called') || null;
+      const waitingList = list.filter((q) => q.status === 'Waiting');
+      const completedList = list.filter((q) => q.status === 'Completed');
+
+      document.getElementById('kpi-total')!.textContent = String(list.filter((q) => q.status !== 'Cancelled').length);
+      document.getElementById('kpi-current')!.textContent = currentCalledItem?.ticket_number || '-';
+      document.getElementById('kpi-waiting')!.textContent = String(waitingList.length);
+      document.getElementById('kpi-completed')!.textContent = String(completedList.length);
+      document.getElementById('kpi-next')!.textContent = waitingList[0]?.ticket_number || '-';
+
+      (document.getElementById('btn-complete') as HTMLButtonElement).disabled = !currentCalledItem;
+      (document.getElementById('btn-skip') as HTMLButtonElement).disabled = !currentCalledItem;
+    }
+
+    document.getElementById('btn-next')?.addEventListener('click', async () => {
+      if (!supabase) return;
+      alertBox.classList.add('hidden');
+      const { data, error } = await supabase.rpc('admin_next_queue');
+      if (error || !data) {
+        showBanner(error?.message || 'Gagal memanggil antrean berikutnya.', true);
+        return;
+      }
+      msgEl.textContent = `Memanggil ${data.ticket_number} (${data.visitor_name})`;
+      showBanner(`Berhasil memanggil nomor antrean ${data.ticket_number}.`, false);
+
+      // Panggil Edge Function Web Push secara non-blocking
+      triggerPushNotification(data.session_id, data.id);
+
+      const audioOn = (document.getElementById('chk-audio') as HTMLInputElement).checked;
+      if (audioOn && data?.ticket_number) {
+        const voiceLang = (document.getElementById('sel-voice') as HTMLSelectElement)?.value || 'id-ID';
+        const rate = parseFloat((document.getElementById('rng-rate') as HTMLInputElement).value);
+        const volume = parseFloat((document.getElementById('rng-vol') as HTMLInputElement).value);
+        await speakQueueAnnouncement(data.ticket_number, boothName, { voiceLang, rate, volume });
+      }
+      await refreshStats();
+    });
+
+    document.getElementById('btn-complete')?.addEventListener('click', async () => {
+      if (!supabase || !currentCalledItem) return;
+      const { error } = await supabase
+        .from('queues')
+        .update({ status: 'Completed' })
+        .eq('id', currentCalledItem.id);
+      if (error) {
+        showBanner(`Gagal menyelesaikan antrean: ${error.message}`, true);
+        return;
+      }
+      showBanner(`Antrean ${currentCalledItem.ticket_number} ditandai Completed.`, false);
+      await refreshStats();
+    });
+
+    document.getElementById('btn-skip')?.addEventListener('click', async () => {
+      if (!supabase || !currentCalledItem) return;
+      const { error } = await supabase
+        .from('queues')
+        .update({ status: 'Skipped' })
+        .eq('id', currentCalledItem.id);
+      if (error) {
+        showBanner(`Gagal melewati antrean: ${error.message}`, true);
+        return;
+      }
+      showBanner(`Antrean ${currentCalledItem.ticket_number} ditandai Skipped.`, false);
+      await refreshStats();
+    });
+
+    document.getElementById('btn-test-audio')?.addEventListener('click', async () => {
+      const voiceLang = (document.getElementById('sel-voice') as HTMLSelectElement)?.value || 'id-ID';
+      const rate = parseFloat((document.getElementById('rng-rate') as HTMLInputElement).value);
+      const volume = parseFloat((document.getElementById('rng-vol') as HTMLInputElement).value);
+      await speakQueueAnnouncement(currentCalledItem?.ticket_number || 'A025', boothName, { voiceLang, rate, volume });
+    });
+
+    document.getElementById('btn-logout')?.addEventListener('click', async () => {
+      await supabase?.auth.signOut();
+      window.location.href = '/admin/login';
+    });
+
+    checkAuthAndLoad();
+    if (supabase) {
+      supabase
+        .channel('admin-dashboard-realtime')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'queues' }, refreshStats)
+        .subscribe();
+    }
+  </script>
+</Layout>

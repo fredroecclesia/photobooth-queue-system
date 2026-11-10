@@ -1,0 +1,199 @@
+---
+import Layout from '../../layouts/Layout.astro';
+---
+<Layout title="Kelola Antrean">
+  <main class="max-w-6xl mx-auto p-6 space-y-6">
+    <header class="flex flex-wrap items-center justify-between gap-4">
+      <div>
+        <a href="/admin" class="text-xs font-bold text-indigo-600 hover:underline">&larr; Kembali ke Dashboard</a>
+        <h1 class="text-2xl font-extrabold mt-1">Manajemen Antrean Aktif</h1>
+      </div>
+      <div class="flex items-center gap-3">
+        <input
+          id="search-visitor"
+          type="search"
+          placeholder="Cari nomor atau nama pengunjung..."
+          class="px-4 py-2.5 rounded-xl border border-slate-300 text-sm"
+        />
+        <button id="btn-reset-session" type="button" class="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold">
+          Reset Sesi Baru (FR-039)
+        </button>
+      </div>
+    </header>
+
+    <div id="queues-alert" class="hidden p-4 rounded-2xl border text-xs font-semibold"></div>
+
+    <!-- Modal Konfirmasi Reset Sesi (FR-039) -->
+    <div id="reset-modal" class="hidden fixed inset-0 bg-slate-950/60 z-50 items-center justify-center p-4">
+      <div class="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-xl border border-slate-200">
+        <h2 class="text-base font-extrabold text-rose-600">Konfirmasi Reset Sesi Antrean (FR-039)</h2>
+        <p class="text-xs text-slate-600 leading-relaxed">
+          Menutup sesi aktif saat ini dan membuka sesi baru dengan nomor urut kembali ke awal. Antrean <code>Waiting</code> yang tersisa akan dibatalkan otomatis agar tidak tertinggal menggantung di sesi lama, dan seluruh riwayat tetap tersimpan.
+        </p>
+        <div class="flex justify-end gap-2 pt-2">
+          <button id="btn-cancel-reset" type="button" class="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700">
+            Batal
+          </button>
+          <button id="btn-confirm-reset" type="button" class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-xs font-bold text-white">
+            Ya, Reset Sesi Sekarang
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <section class="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
+      <table class="w-full text-left text-sm">
+        <thead class="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500">
+          <tr>
+            <th class="py-3.5 px-4">Nomor</th>
+            <th class="py-3.5 px-4">Nama Pengunjung</th>
+            <th class="py-3.5 px-4">Status</th>
+            <th class="py-3.5 px-4">Waktu Registrasi</th>
+            <th class="py-3.5 px-4">Waktu Panggilan Pertama</th>
+            <th class="py-3.5 px-4 text-right">Aksi (Recall / Skip / Complete / Cancel)</th>
+          </tr>
+        </thead>
+        <tbody id="queues-tbody" class="divide-y divide-slate-100"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script>
+    import { supabase, escapeHtml, triggerPushNotification } from '../../lib/supabase';
+
+    const tbody = document.getElementById('queues-tbody')!;
+    const searchInput = document.getElementById('search-visitor') as HTMLInputElement;
+    const alertBox = document.getElementById('queues-alert')!;
+    const resetModal = document.getElementById('reset-modal')!;
+    let allQueues: any[] = [];
+    let currentSessionId = '';
+
+    function showAlert(msg: string, isErr = false) {
+      alertBox.textContent = msg;
+      alertBox.className = isErr
+        ? 'p-4 rounded-2xl border bg-rose-50 border-rose-200 text-rose-700 text-xs font-semibold'
+        : 'p-4 rounded-2xl border bg-emerald-50 border-emerald-200 text-emerald-800 text-xs font-semibold';
+      alertBox.classList.remove('hidden');
+    }
+
+    async function verifyAdminAndLoad() {
+      if (!supabase) return;
+      const { data: isAdmin } = await supabase.rpc('is_admin');
+      if (!isAdmin) {
+        window.location.href = '/admin/login';
+        return;
+      }
+      await loadQueues();
+    }
+
+    async function loadQueues() {
+      if (!supabase) return;
+      const { data: session } = await supabase
+        .from('queue_sessions')
+        .select('*')
+        .eq('status', 'Active')
+        .limit(1)
+        .single();
+      if (!session) return;
+      currentSessionId = session.id;
+
+      const { data, error } = await supabase
+        .from('queues')
+        .select('*')
+        .eq('session_id', session.id)
+        .order('sequence_number', { ascending: true });
+
+      if (error) {
+        showAlert(`Gagal memuat antrean: ${error.message}`, true);
+        return;
+      }
+      allQueues = data || [];
+      renderTable();
+    }
+
+    function renderTable() {
+      const q = searchInput.value.trim().toLowerCase();
+      const filtered = allQueues.filter(
+        (item) =>
+          item.ticket_number.toLowerCase().includes(q) ||
+          item.visitor_name.toLowerCase().includes(q)
+      );
+
+      // Gunakan escapeHtml pada seluruh data untuk mencegah Stored XSS!
+      tbody.innerHTML = filtered
+        .map(
+          (item) => `
+        <tr>
+          <td class="py-3.5 px-4 font-extrabold text-indigo-600">${escapeHtml(item.ticket_number)}</td>
+          <td class="py-3.5 px-4 font-medium">${escapeHtml(item.visitor_name)}</td>
+          <td class="py-3.5 px-4"><span class="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100">${escapeHtml(item.status)}</span></td>
+          <td class="py-3.5 px-4 text-xs text-slate-500">${new Date(item.created_at).toLocaleTimeString('id-ID')}</td>
+          <td class="py-3.5 px-4 text-xs text-slate-500">${item.called_at ? new Date(item.called_at).toLocaleTimeString('id-ID') : '-'}</td>
+          <td class="py-3.5 px-4 text-right space-x-1.5">
+            ${item.status === 'Called' ? `<button data-act="Completed" data-id="${escapeHtml(item.id)}" class="px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-xs font-bold">Complete</button>` : ''}
+            ${item.status === 'Called' ? `<button data-act="Skipped" data-id="${escapeHtml(item.id)}" class="px-2.5 py-1 rounded-lg bg-amber-500 text-white text-xs font-bold">Skip</button>` : ''}
+            ${item.status === 'Skipped' ? `<button data-act="Called" data-id="${escapeHtml(item.id)}" class="px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-xs font-bold">Recall</button>` : ''}
+            ${item.status === 'Waiting' ? `<button data-act="Cancelled" data-id="${escapeHtml(item.id)}" class="px-2.5 py-1 rounded-lg bg-rose-600 text-white text-xs font-bold">Cancel</button>` : ''}
+          </td>
+        </tr>
+      `
+        )
+        .join('');
+    }
+
+    tbody.addEventListener('click', async (e) => {
+      const target = (e.target as HTMLElement).closest('button[data-act]') as HTMLButtonElement | null;
+      if (!target || !supabase) return;
+      const id = target.dataset.id!;
+      const newStatus = target.dataset.act!;
+
+      const { error } = await supabase.from('queues').update({ status: newStatus }).eq('id', id);
+      if (error) {
+        const msg = error.message.includes('idx_single_called_per_session')
+          ? 'Gagal Recall: Masih ada antrean lain yang berstatus Called pada sesi ini. Selesaikan atau Skip antrean aktif terlebih dahulu.'
+          : `Gagal mengubah status ke ${newStatus}: ${error.message}`;
+        showAlert(msg, true);
+        return;
+      }
+
+      if (newStatus === 'Called' && currentSessionId) {
+        triggerPushNotification(currentSessionId, id);
+      }
+
+      showAlert(`Status antrean berhasil diubah menjadi ${newStatus}.`, false);
+      await loadQueues();
+    });
+
+    // Handler Reset Sesi (FR-039)
+    document.getElementById('btn-reset-session')?.addEventListener('click', () => {
+      resetModal.classList.remove('hidden');
+      resetModal.classList.add('flex');
+    });
+
+    document.getElementById('btn-cancel-reset')?.addEventListener('click', () => {
+      resetModal.classList.add('hidden');
+      resetModal.classList.remove('flex');
+    });
+
+    document.getElementById('btn-confirm-reset')?.addEventListener('click', async () => {
+      if (!supabase) return;
+      resetModal.classList.add('hidden');
+      resetModal.classList.remove('flex');
+
+      const { data, error } = await supabase.rpc('admin_reset_queue', {
+        p_auto_close_remaining: true,
+      });
+
+      if (error) {
+        showAlert(`Gagal mereset sesi antrean: ${error.message}`, true);
+        return;
+      }
+
+      showAlert(`Sesi antrean baru (${data.session_date}) berhasil dimulai. Nomor urut kembali ke awal.`, false);
+      await loadQueues();
+    });
+
+    searchInput?.addEventListener('input', renderTable);
+    verifyAdminAndLoad();
+  </script>
+</Layout>

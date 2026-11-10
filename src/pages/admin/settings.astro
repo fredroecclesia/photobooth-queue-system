@@ -1,0 +1,170 @@
+---
+import Layout from '../../layouts/Layout.astro';
+---
+<Layout title="Pengaturan Sistem">
+  <main class="max-w-3xl mx-auto p-6 space-y-6">
+    <header>
+      <a href="/admin" class="text-xs font-bold text-indigo-600 hover:underline">&larr; Kembali ke Dashboard</a>
+      <h1 class="text-2xl font-extrabold mt-1">Pengaturan Photobooth (PRD Bab 10: FR-057 s/d FR-065)</h1>
+    </header>
+
+    <div id="settings-alert" class="hidden p-4 rounded-2xl border text-xs font-semibold"></div>
+
+    <form id="settings-form" class="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
+      <div class="grid sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Nama Photobooth (FR-057)</label>
+          <input id="set-name" type="text" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm" />
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">URL Logo (FR-058)</label>
+          <input id="set-logo" type="text" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm" />
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Queue Prefix (FR-059)</label>
+          <input id="set-prefix" type="text" required maxlength="5" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm" />
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Starting Number (FR-060)</label>
+          <input id="set-start" type="number" min="1" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm" />
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Batas Antrean / Queue Limit (FR-061)</label>
+          <input id="set-limit" type="number" min="1" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm" />
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Durasi Sesi (Menit) (FR-063)</label>
+          <input id="set-duration" type="number" min="1" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm" />
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Ambang Peringatan Antrean / Near Turn (FR-064)</label>
+          <input id="set-threshold" type="number" min="1" max="20" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm" />
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Zona Waktu Sesi</label>
+          <select id="set-timezone" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm bg-white">
+            <option value="Asia/Jakarta">WIB (Asia/Jakarta)</option>
+            <option value="Asia/Makassar">WITA (Asia/Makassar)</option>
+            <option value="Asia/Jayapura">WIT (Asia/Jayapura)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Suara / Bahasa Web Speech (FR-042 / FR-065)</label>
+          <input id="set-voice" type="text" placeholder="id-ID" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Speech Rate (FR-043)</label>
+            <input id="set-rate" type="number" min="0.5" max="2.0" step="0.1" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm" />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Volume (FR-044)</label>
+            <input id="set-volume" type="number" min="0.0" max="1.0" step="0.1" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm" />
+          </div>
+        </div>
+      </div>
+
+      <div class="pt-3 border-t border-slate-100 flex flex-wrap gap-6">
+        <label class="inline-flex items-center gap-2 text-sm font-semibold">
+          <input id="set-operational" type="checkbox" class="rounded text-indigo-600" />
+          Buka Operasional Registrasi (FR-062)
+        </label>
+        <label class="inline-flex items-center gap-2 text-sm font-semibold">
+          <input id="set-notif" type="checkbox" class="rounded text-indigo-600" />
+          Aktifkan Notifikasi (FR-064)
+        </label>
+        <label class="inline-flex items-center gap-2 text-sm font-semibold">
+          <input id="set-audio" type="checkbox" class="rounded text-indigo-600" />
+          Aktifkan Audio Announcement (FR-065)
+        </label>
+      </div>
+
+      <button type="submit" class="px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm">
+        Simpan Pengaturan
+      </button>
+    </form>
+  </main>
+
+  <script>
+    import { supabase } from '../../lib/supabase';
+    const alertBox = document.getElementById('settings-alert')!;
+
+    function showBanner(msg: string, isErr = false) {
+      alertBox.textContent = msg;
+      alertBox.className = isErr
+        ? 'p-4 rounded-2xl border bg-rose-50 border-rose-200 text-rose-700 text-xs font-semibold'
+        : 'p-4 rounded-2xl border bg-emerald-50 border-emerald-200 text-emerald-800 text-xs font-semibold';
+      alertBox.classList.remove('hidden');
+    }
+
+    async function loadSettings() {
+      if (!supabase) return;
+      const { data: isAdmin } = await supabase.rpc('is_admin');
+      if (!isAdmin) {
+        window.location.href = '/admin/login';
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('queue_settings')
+        .select('*')
+        .eq('singleton_key', true)
+        .single();
+
+      if (error || !data) {
+        showBanner(error?.message || 'Gagal memuat pengaturan.', true);
+        return;
+      }
+
+      (document.getElementById('set-name') as HTMLInputElement).value = data.photobooth_name;
+      (document.getElementById('set-logo') as HTMLInputElement).value = data.logo_url || '';
+      (document.getElementById('set-prefix') as HTMLInputElement).value = data.queue_prefix;
+      (document.getElementById('set-start') as HTMLInputElement).value = String(data.starting_number);
+      (document.getElementById('set-limit') as HTMLInputElement).value = String(data.queue_limit);
+      (document.getElementById('set-duration') as HTMLInputElement).value = String(data.session_duration);
+      (document.getElementById('set-threshold') as HTMLInputElement).value = String(data.near_turn_threshold ?? 3);
+      (document.getElementById('set-timezone') as HTMLSelectElement).value = data.timezone || 'Asia/Jakarta';
+      (document.getElementById('set-voice') as HTMLInputElement).value = data.speech_voice || 'id-ID';
+      (document.getElementById('set-rate') as HTMLInputElement).value = String(data.speech_rate ?? 1.0);
+      (document.getElementById('set-volume') as HTMLInputElement).value = String(data.speech_volume ?? 1.0);
+      (document.getElementById('set-operational') as HTMLInputElement).checked = data.operational_status;
+      (document.getElementById('set-notif') as HTMLInputElement).checked = data.notification_enabled;
+      (document.getElementById('set-audio') as HTMLInputElement).checked = data.audio_enabled;
+    }
+
+    document.getElementById('settings-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!supabase) return;
+
+      const { error } = await supabase
+        .from('queue_settings')
+        .update({
+          photobooth_name: (document.getElementById('set-name') as HTMLInputElement).value.trim(),
+          logo_url: (document.getElementById('set-logo') as HTMLInputElement).value.trim(),
+          queue_prefix: (document.getElementById('set-prefix') as HTMLInputElement).value.trim(),
+          starting_number: parseInt((document.getElementById('set-start') as HTMLInputElement).value, 10),
+          queue_limit: parseInt((document.getElementById('set-limit') as HTMLInputElement).value, 10),
+          session_duration: parseInt((document.getElementById('set-duration') as HTMLInputElement).value, 10),
+          near_turn_threshold: parseInt((document.getElementById('set-threshold') as HTMLInputElement).value, 10),
+          timezone: (document.getElementById('set-timezone') as HTMLSelectElement).value,
+          speech_voice: (document.getElementById('set-voice') as HTMLInputElement).value.trim() || 'id-ID',
+          speech_rate: parseFloat((document.getElementById('set-rate') as HTMLInputElement).value),
+          speech_volume: parseFloat((document.getElementById('set-volume') as HTMLInputElement).value),
+          operational_status: (document.getElementById('set-operational') as HTMLInputElement).checked,
+          notification_enabled: (document.getElementById('set-notif') as HTMLInputElement).checked,
+          audio_enabled: (document.getElementById('set-audio') as HTMLInputElement).checked,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('singleton_key', true);
+
+      if (error) {
+        showBanner(`Gagal menyimpan pengaturan: ${error.message}`, true);
+        return;
+      }
+
+      showBanner('Pengaturan sistem berhasil disimpan.', false);
+    });
+
+    loadSettings();
+  </script>
+</Layout>
